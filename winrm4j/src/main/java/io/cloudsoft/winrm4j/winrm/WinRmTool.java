@@ -5,6 +5,7 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.charset.Charset;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -26,7 +27,7 @@ import io.cloudsoft.winrm4j.client.retry.RetryPolicy;
 
 /**
  * Tool for executing commands over WinRM.
- * 
+ * <p>
  * This class is not guaranteed to be thread safe.
  */
 // Current implementation is thread safe because it creates a client per execute call
@@ -58,7 +59,12 @@ public class WinRmTool {
     private final SSLSocketFactory sslSocketFactory;
     private final SSLContext sslContext;
     private final WinRmClientContext context;
+    private final Locale locale;
     private final boolean requestNewKerberosTicket;
+    private final String proxyServer;
+    private final Integer proxyPort;
+    private final String proxyUser;
+    private final String proxyPassword;
 
     public static class Builder {
         private String authenticationScheme = AuthSchemes.NTLM;
@@ -76,12 +82,18 @@ public class WinRmTool {
         private SSLContext sslContext;
         private WinRmClientContext context;
         private boolean requestNewKerberosTicket;
+        private Locale locale;
+        private String proxyServer;
+        private Integer proxyPort;
+        private String proxyUser;
+        private String proxyPassword;
 
         private static final Pattern matchPort = Pattern.compile(".*:(\\d+)$");
 
         public static Builder builder(String address, String username, String password) {
             return builder(address, null, username, password);
         }
+
         public static Builder builder(String address, String domain, String username, String password) {
             return new Builder(address, domain, username, password);
         }
@@ -93,10 +105,31 @@ public class WinRmTool {
             this.password = password;
         }
 
+        public Builder proxyServer(String proxyServer) {
+            this.proxyServer = WinRmClient.checkNotNull(proxyServer, "proxyServer");
+            return this;
+        }
+
+        public Builder proxyPort(Integer proxyPort) {
+            this.proxyPort = WinRmClient.checkNotNull(proxyPort, "proxyPort");
+            return this;
+        }
+
+        public Builder proxyUser(String proxyUser) {
+            this.proxyUser = WinRmClient.checkNotNull(proxyUser, "proxyUser");
+            return this;
+        }
+
+        public Builder proxyPassword(String proxyPassword) {
+            this.proxyPassword = WinRmClient.checkNotNull(proxyPassword, "proxyPassword");
+            return this;
+        }
+
         public Builder workingDirectory(String workingDirectory) {
             this.workingDirectory = WinRmClient.checkNotNull(workingDirectory, "workingDirectory");
             return this;
         }
+
         public Builder environment(Map<String, String> environment) {
             this.environment = WinRmClient.checkNotNull(environment, "environment");
             return this;
@@ -124,34 +157,39 @@ public class WinRmTool {
             this.useHttps = useHttps;
             return this;
         }
-        
+
         public Builder hostnameVerifier(HostnameVerifier hostnameVerifier) {
-        	this.hostnameVerifier = hostnameVerifier;
-        	return this;
+            this.hostnameVerifier = hostnameVerifier;
+            return this;
         }
 
         public Builder sslSocketFactory(SSLSocketFactory sslSocketFactory) {
-	        this.sslSocketFactory = sslSocketFactory;
-	        return this;
+            this.sslSocketFactory = sslSocketFactory;
+            return this;
         }
-        
+
         public Builder sslContext(SSLContext sslContext) {
-        	this.sslContext = sslContext;
-        	return this;
+            this.sslContext = sslContext;
+            return this;
         }
 
         public Builder port(int port) {
             this.port = port;
             return this;
         }
-        
+
         public Builder context(WinRmClientContext context) {
             this.context = context;
             return this;
         }
-        
+
         public Builder requestNewKerberosTicket(boolean requestNewKerberosTicket) {
             this.requestNewKerberosTicket = requestNewKerberosTicket;
+            return this;
+        }
+
+        public Builder locale(Locale locale) {
+            this.locale = locale;
             return this;
         }
 
@@ -160,7 +198,8 @@ public class WinRmTool {
                     domain, username, password, authenticationScheme,
                     disableCertificateChecks, workingDirectory,
                     environment, hostnameVerifier, sslSocketFactory, sslContext,
-                    context, requestNewKerberosTicket);
+                    context, requestNewKerberosTicket, locale,
+                    proxyServer, proxyPort, proxyUser, proxyPassword);
         }
 
         // TODO remove arguments when method WinRmTool.connect() is removed
@@ -196,11 +235,13 @@ public class WinRmTool {
     }
 
     private WinRmTool(String address, String domain, String username,
-            String password, String authenticationScheme,
-            boolean disableCertificateChecks, String workingDirectory,
-            Map<String, String> environment, HostnameVerifier hostnameVerifier,
-            SSLSocketFactory sslSocketFactory, SSLContext sslContext, WinRmClientContext context,
-            boolean requestNewKerberosTicket) {
+                      String password, String authenticationScheme,
+                      boolean disableCertificateChecks, String workingDirectory,
+                      Map<String, String> environment, HostnameVerifier hostnameVerifier,
+                      SSLSocketFactory sslSocketFactory, SSLContext sslContext, WinRmClientContext context,
+                      boolean requestNewKerberosTicket, Locale locale,
+                      String proxyServer, Integer proxyPort,
+                      String proxyUser, String proxyPassword) {
         this.disableCertificateChecks = disableCertificateChecks;
         this.address = address;
         this.domain = domain;
@@ -214,58 +255,64 @@ public class WinRmTool {
         this.sslContext = sslContext;
         this.context = context;
         this.requestNewKerberosTicket = requestNewKerberosTicket;
+        this.locale = locale;
+        this.proxyServer = proxyServer;
+        this.proxyPort = proxyPort;
+        this.proxyUser = proxyUser;
+        this.proxyPassword = proxyPassword;
     }
 
     /**
      * Executes a Native Windows commands.
-     * 
+     * <p>
      * Current implementation is to concatenate the commands using <code>" &amp; "</code>.
-     * 
+     * <p>
      * Consider instead uploading a script file, and then executing that as a one-line command.
-     * 
+     * <p>
      * See {@link #executeCommand(String)} for limitations, e.g. about command length.
-     * 
+     *
      * @since 0.2
      */
     public WinRmToolResponse executeCommand(List<String> commands) {
-    	return executeCommand(joinCommands(commands));
+        return executeCommand(joinCommands(commands));
     }
 
     public WinRmToolResponse executeCommand(List<String> commands, Writer out, Writer err) {
         return executeCommand(joinCommands(commands), out, err);
     }
+
     /**
      * Updates operationTimeout for the next <code>executeXxx</code> call
      *
-     * @see <a href="http://www.dmtf.org/sites/default/files/standards/documents/DSP0226_1.2.0.pdf">DSP0226_1.2.0.pdf</a>
      * @param operationTimeout in milliseconds
      *                         default value {@link WinRmClient.Builder#DEFAULT_OPERATION_TIMEOUT}
      *                         If operations cannot be completed in a specified time,
      *                         the service returns a fault so that a client can comply with its obligations.
+     * @see <a href="http://www.dmtf.org/sites/default/files/standards/documents/DSP0226_1.2.0.pdf">DSP0226_1.2.0.pdf</a>
      */
     public void setOperationTimeout(Long operationTimeout) {
         this.operationTimeout = operationTimeout;
     }
 
-	/**
-	 * Update connectionTimeout
-	 *
-	 * @param connectionTimeout in milliseconds
-	 *                         default value {@link WinRmClientBuilder#DEFAULT_CONNECTION_TIMEOUT}
-	 */
-	public void setConnectionTimeout(Long connectionTimeout) {
-		this.connectionTimeout = connectionTimeout;
-	}
+    /**
+     * Update connectionTimeout
+     *
+     * @param connectionTimeout in milliseconds
+     *                          default value {@link WinRmClientBuilder#DEFAULT_CONNECTION_TIMEOUT}
+     */
+    public void setConnectionTimeout(Long connectionTimeout) {
+        this.connectionTimeout = connectionTimeout;
+    }
 
-	/**
-	 * Update receiveTimeout
-	 *
-	 * @param receiveTimeout in milliseconds
-	 *                         default value {@link WinRmClientBuilder#DEFAULT_RECEIVE_TIMEOUT}
-	 */
-	public void setReceiveTimeout(Long receiveTimeout) {
-		this.receiveTimeout = receiveTimeout;
-	}
+    /**
+     * Update receiveTimeout
+     *
+     * @param receiveTimeout in milliseconds
+     *                       default value {@link WinRmClientBuilder#DEFAULT_RECEIVE_TIMEOUT}
+     */
+    public void setReceiveTimeout(Long receiveTimeout) {
+        this.receiveTimeout = receiveTimeout;
+    }
 
     public void setRetryReceiveAfterOperationTimeout(Predicate<String> retryReceiveAfterOperationTimeout) {
         this.retryReceiveAfterOperationTimeout = retryReceiveAfterOperationTimeout;
@@ -293,6 +340,7 @@ public class WinRmTool {
     /**
      * Executes a Native Windows command.
      * It is creating a new Shell on the destination host each time it is being called.
+     *
      * @param command The command is limited to 8096 bytes.
      *                Maximum length of the command can be even smaller depending on the platform.
      *                https://support.microsoft.com/en-us/kb/830473
@@ -329,13 +377,13 @@ public class WinRmTool {
             builder.disableCertificateChecks(disableCertificateChecks);
         }
         if (hostnameVerifier != null) {
-        	builder.hostnameVerifier(hostnameVerifier);
+            builder.hostnameVerifier(hostnameVerifier);
         }
         if (sslSocketFactory != null) {
-        	builder.sslSocketFactory(sslSocketFactory);
+            builder.sslSocketFactory(sslSocketFactory);
         }
         if (sslContext != null) {
-        	builder.sslContext(sslContext);
+            builder.sslContext(sslContext);
         }
         if (workingDirectory != null) {
             builder.workingDirectory(workingDirectory);
@@ -352,10 +400,26 @@ public class WinRmTool {
         if (requestNewKerberosTicket) {
             builder.requestNewKerberosTicket(requestNewKerberosTicket);
         }
+        if (locale != null) {
+            builder.locale(locale);
+        }
+        if (proxyServer != null) {
+            builder.proxyServer(proxyServer);
+        }
+        if (proxyPort != null) {
+            builder.proxyPort(proxyPort);
+        }
+        if (proxyUser != null) {
+            builder.proxyUser(proxyUser);
+        }
+        if (proxyPassword != null) {
+            builder.proxyPassword(proxyPassword);
+        }
+
 
         WinRmToolResponse winRmToolResponse;
 
-        try(WinRmClient client = builder.build()) {
+        try (WinRmClient client = builder.build()) {
             try (ShellCommand shell = client.createShell()) {
                 int code = shell.execute(command, out, err);
                 winRmToolResponse = new WinRmToolResponse(out.toString(), err.toString(), code);
@@ -369,6 +433,7 @@ public class WinRmTool {
     /**
      * Executes a Power Shell command.
      * It is creating a new Shell on the destination host each time it is being called.
+     *
      * @since 0.2
      */
     public WinRmToolResponse executePs(String psCommand) {
@@ -378,6 +443,7 @@ public class WinRmTool {
     /**
      * Executes a Power Shell command.
      * It is creating a new Shell on the destination host each time it is being called.
+     *
      * @since 0.2
      */
     public WinRmToolResponse executePs(String psCommand, Writer out, Writer err) {
@@ -386,9 +452,9 @@ public class WinRmTool {
 
     /**
      * Execute a list of Power Shell commands as one command.
-     * The method translates the list of commands to a single String command with a 
+     * The method translates the list of commands to a single String command with a
      * <code>"\r\n"</code> delimiter and a terminating one.
-     * 
+     * <p>
      * Consider instead uploading a script file, and then executing that as a one-line command.
      */
     public WinRmToolResponse executePs(List<String> commands) {
@@ -399,7 +465,7 @@ public class WinRmTool {
      * Execute a list of Power Shell commands as one command.
      * The method translates the list of commands to a single String command with a
      * <code>"\r\n"</code> delimiter and a terminating one.
-     *
+     * <p>
      * Consider instead uploading a script file, and then executing that as a one-line command.
      */
     public WinRmToolResponse executePs(List<String> commands, Writer out, Writer err) {
@@ -414,11 +480,11 @@ public class WinRmTool {
 
     /**
      * Execute a list of Windows Native commands as one command.
-     * The method translates the list of commands to a single String command with a <code>" &amp; "</code> 
+     * The method translates the list of commands to a single String command with a <code>" &amp; "</code>
      * delimiter and a terminating one.
-     * 
+     *
      * @deprecated since 0.2; instead use {@link #executeCommand(List)} to remove ambiguity
-     *             between native commands and powershell.
+     * between native commands and powershell.
      */
     @Deprecated
     public WinRmToolResponse executeScript(List<String> commands) {
@@ -427,7 +493,7 @@ public class WinRmTool {
 
     /**
      * @deprecated since 0.2; instead use {@link #executeCommand(String)} to remove ambiguity
-     *             between native commands and powershell.
+     * between native commands and powershell.
      */
     @Deprecated
     public WinRmToolResponse executeScript(String commands) {
@@ -450,15 +516,15 @@ public class WinRmTool {
         StringBuilder builder = new StringBuilder();
         boolean first = true;
         for (String command : commands) {
-        	if (first) {
-        		first = false;
-        	} else {
+            if (first) {
+                first = false;
+            } else {
                 builder.append(delim);
-        	}
+            }
             builder.append(command);
         }
         if (endWithDelim) {
-        	builder.append(delim);
+            builder.append(delim);
         }
         return builder.toString();
     }

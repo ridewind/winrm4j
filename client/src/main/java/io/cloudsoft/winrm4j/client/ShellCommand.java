@@ -2,11 +2,13 @@ package io.cloudsoft.winrm4j.client;
 
 import java.io.IOException;
 import java.io.Writer;
+import java.nio.charset.Charset;
 import java.util.List;
 import java.util.function.Predicate;
 
 import javax.xml.ws.soap.SOAPFaultException;
 
+import org.apache.commons.codec.Charsets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.NodeList;
@@ -38,8 +40,8 @@ public class ShellCommand implements AutoCloseable {
 
     /**
      * Example response:
-     *   [truncated]The request for the Windows Remote Shell with ShellId xxxx-yyyy-ccc... failed because the shell was not found on the server.
-     *   Possible causes are: the specified ShellId is incorrect or the shell no longer exi
+     * [truncated]The request for the Windows Remote Shell with ShellId xxxx-yyyy-ccc... failed because the shell was not found on the server.
+     * Possible causes are: the specified ShellId is incorrect or the shell no longer exi
      */
     private static final String WSMAN_FAULT_CODE_SHELL_WAS_NOT_FOUND = "2150858843";
 
@@ -57,7 +59,7 @@ public class ShellCommand implements AutoCloseable {
     private int numberOfReceiveCalls;
 
     public ShellCommand(WinRm winrm, String shellId, String operationTimeout, Predicate<String> retryReceiveAfterOperationTimeout,
-            Locale locale) {
+                        Locale locale) {
         this.winrm = winrm;
         this.shellSelector = createShellSelector(shellId);
         this.operationTimeout = operationTimeout;
@@ -107,7 +109,7 @@ public class ShellCommand implements AutoCloseable {
     }
 
     private int receiveCommand(String commandId, Writer out, Writer err) {
-        while(true) {
+        while (true) {
             final Receive receive = new Receive();
             DesiredStreamType stream = new DesiredStreamType();
             stream.setCommandId(commandId);
@@ -162,7 +164,9 @@ public class ShellCommand implements AutoCloseable {
         assertFaultCode(soapFault, code, x -> true);
     }
 
-    /** @deprecated since 0.6.0. Implementation detail, access will be removed in future versions */
+    /**
+     * @deprecated since 0.6.0. Implementation detail, access will be removed in future versions
+     */
     @Deprecated
     public int getNumberOfReceiveCalls() {
         return numberOfReceiveCalls;
@@ -175,9 +179,8 @@ public class ShellCommand implements AutoCloseable {
             if (value == null) continue;
             if (out != null && "stdout".equals(s.getName())) {
                 try {
-                    //TODO use passed locale?
                     if (value.length > 0) {
-                        out.write(new String(value));
+                        out.write(transStrByLocal(value));
                         out.flush();
                     }
                     if (Boolean.TRUE.equals(s.isEnd())) {
@@ -189,9 +192,8 @@ public class ShellCommand implements AutoCloseable {
             }
             if (err != null && "stderr".equals(s.getName())) {
                 try {
-                    //TODO use passed locale?
                     if (value.length > 0) {
-                        err.write(new String(value));
+                        err.write(transStrByLocal(value));
                         err.flush();
                     }
                     if (Boolean.TRUE.equals(s.isEnd())) {
@@ -201,6 +203,15 @@ public class ShellCommand implements AutoCloseable {
                     throw new IllegalStateException(e);
                 }
             }
+        }
+    }
+
+    private String transStrByLocal(byte[] value) {
+        switch (locale.getLang()) {
+            case "zh":
+                return new String(value, Charset.forName("GBK"));
+            default:
+                return new String(value);
         }
     }
 

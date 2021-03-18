@@ -254,7 +254,7 @@
           <artifactId>maven-release-plugin</artifactId>
           <version>2.5.3</version>
         </plugin>
-        <!--This plugin's configuration is used to store Eclipse m2e settings 
+        <!--This plugin's configuration is used to store Eclipse m2e settings
           only. It has no influence on the Maven build itself. -->
         <plugin>
           <groupId>org.eclipse.m2e</groupId>
@@ -366,10 +366,10 @@
   <profiles>
     <!--
       Make release build (e.g. for Sonatype) with -PRelease
-      Note that a sonatype release requires signed artifacts, javadoc and source jars; 
+      Note that a sonatype release requires signed artifacts, javadoc and source jars;
       this snippet doesn't do everything, as you need to set up a key etc,
       but it should get you a long way there (and prevent maven faffing).
-      If you don't deploy you can delete or ignore this (it has no effect unless you 
+      If you don't deploy you can delete or ignore this (it has no effect unless you
       enter -PRelease).
 
       Add the following to your ~/.m2/settings.xml to be able to build without supplying
@@ -416,8 +416,8 @@
             <artifactId>maven-javadoc-plugin</artifactId>
             <inherited>true</inherited>
             <configuration>
-              <!-- disable 'use' reporting because of NPE deploying to sonatype: 
-                   http://stackoverflow.com/questions/888199/why-does-maven-install-fail-during-javadoc-generation 
+              <!-- disable 'use' reporting because of NPE deploying to sonatype:
+                   http://stackoverflow.com/questions/888199/why-does-maven-install-fail-during-javadoc-generation
                    http://bugs.sun.com/bugdatabase/view_bug.do;jsessionid=ac084ab7f47c4e7f1df2117cecd?bug_id=5101868 -->
               <use>false</use>
               <links>
@@ -435,11 +435,9 @@
                   <head>To-do:</head>
                 </tag>
               </tags>
-              
-              <!-- See https://stackoverflow.com/questions/15886209/maven-is-not-working-in-java-8-when-javadoc-tags-are-incomplete 
-              -->
-              <additionalparam>-Xdoclint:none</additionalparam>
-              
+
+              <doclint>none</doclint>
+
             </configuration>
             <executions>
               <execution>
@@ -471,18 +469,17 @@
          (and soon we will support artifactory)
     -->
     <profile>
-      <id>sonatype-nexus-repo</id>
-      <activation> <property><name>deployTo</name><value>sonatype</value></property> </activation>
+      <id>nexus</id>
       <distributionManagement>
         <repository>
-          <id>sonatype-nexus-staging</id>
+          <id>nexus-releases</id>
           <name>Nexus Release Repository</name>
-          <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+          <url>http://nexus.yuyou:8081/repository/maven-releases/</url>
         </repository>
         <snapshotRepository>
-          <id>sonatype-nexus-snapshots</id>
-          <name>Sonatype Nexus Snapshots</name>
-          <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+          <id>nexus-snapshots</id>
+          <name>Nexus Snapshot Repository</name>
+          <url>http://nexus.yuyou:8081/repository/maven-snapshots/</url>
         </snapshotRepository>
       </distributionManagement>
     </profile>

@@ -23,10 +23,10 @@ public class WinRmClientBuilder {
      */
     // Default matches org.apache.cxf.transports.http.configuration.HTTPClientPolicy.getConnectionTimeout()
     private static final long DEFAULT_CONNECTION_TIMEOUT = 30L * 1000L;
-    
+
     // Default matches org.apache.cxf.transports.http.configuration.HTTPClientPolicy.getConnectionRequestTimeout()
     private static final long DEFAULT_CONNECTION_REQUEST_TIMEOUT = 60L * 1000L;
-    
+
     /**
      * Timeout applied by default on client side for the reading of the socket ({@code null} meaning automatically calculated from
      * the{@link #operationTimeout} by adding to it one minute).
@@ -59,10 +59,15 @@ public class WinRmClientBuilder {
     protected boolean disableCertificateChecks;
     protected HostnameVerifier hostnameVerifier;
     protected SSLSocketFactory sslSocketFactory;
-    
+
     protected SSLContext sslContext;
     protected boolean requestNewKerberosTicket;
-    
+
+    protected String proxyServer;
+    protected Integer proxyPort;
+    protected String proxyUser;
+    protected String proxyPassword;
+
     WinRmClientBuilder(String endpoint) {
         this(toUrlUnchecked(WinRmClient.checkNotNull(endpoint, "endpoint")));
     }
@@ -121,13 +126,13 @@ public class WinRmClientBuilder {
         return this;
     }
 
-   /**
-    * Timeout applied to connect the socket.
-    *
-    * @param connectionTimeout in milliseconds
-    *                         default value {@link WinRmClientBuilder#DEFAULT_CONNECTION_TIMEOUT}
-    * @see <a href="https://cxf.apache.org/javadoc/latest/org/apache/cxf/transports/http/configuration/HTTPClientPolicy.html#setConnectionTimeout-long-">HTTPClientPolicy#setConnectionTimeout</a>
-    */
+    /**
+     * Timeout applied to connect the socket.
+     *
+     * @param connectionTimeout in milliseconds
+     *                          default value {@link WinRmClientBuilder#DEFAULT_CONNECTION_TIMEOUT}
+     * @see <a href="https://cxf.apache.org/javadoc/latest/org/apache/cxf/transports/http/configuration/HTTPClientPolicy.html#setConnectionTimeout-long-">HTTPClientPolicy#setConnectionTimeout</a>
+     */
     public WinRmClientBuilder connectionTimeout(long connectionTimeout) {
         this.connectionTimeout = connectionTimeout;
         return this;
@@ -140,27 +145,27 @@ public class WinRmClientBuilder {
      *                                 default value {@link WinRmClientBuilder#DEFAULT_CONNECTION_REQUEST_TIMEOUT}
      * @see <a href="https://cxf.apache.org/javadoc/latest/org/apache/cxf/transports/http/configuration/HTTPClientPolicy.html#setConnectionRequestTimeout-long-">HTTPClientPolicy#setConnectionRequestTimeout</a>
      */
-     public WinRmClientBuilder connectionRequestTimeout(long connectionRequestTimeout) {
-         this.connectionRequestTimeout = connectionRequestTimeout;
-         return this;
-     }
+    public WinRmClientBuilder connectionRequestTimeout(long connectionRequestTimeout) {
+        this.connectionRequestTimeout = connectionRequestTimeout;
+        return this;
+    }
 
     /**
      * Timeout applied to read the socket.
      *
      * @param receiveTimeout in milliseconds
-     *                         default value {@link WinRmClientBuilder#DEFAULT_RECEIVE_TIMEOUT}
+     *                       default value {@link WinRmClientBuilder#DEFAULT_RECEIVE_TIMEOUT}
      * @see <a href="https://cxf.apache.org/javadoc/latest/org/apache/cxf/transports/http/configuration/HTTPClientPolicy.html#setReceiveTimeout-long-">HTTPClientPolicy#setReceiveTimeout</a>
      */
-     public WinRmClientBuilder receiveTimeout(Long receiveTimeout) {
-         this.receiveTimeout = receiveTimeout;
-         return this;
-     }
+    public WinRmClientBuilder receiveTimeout(Long receiveTimeout) {
+        this.receiveTimeout = receiveTimeout;
+        return this;
+    }
 
     /**
      * @param retryReceiveAfterOperationTimeout define if a new Receive request will be send when the server returns
-     *      a fault with the code {@link ShellCommand#WSMAN_FAULT_CODE_OPERATION_TIMEOUT_EXPIRED}.
-     *        Default value {@link #ALWAYS_RETRY_AFTER_OPERATION_TIMEOUT_EXPIRED}.
+     *                                          a fault with the code {@link ShellCommand#WSMAN_FAULT_CODE_OPERATION_TIMEOUT_EXPIRED}.
+     *                                          Default value {@link #ALWAYS_RETRY_AFTER_OPERATION_TIMEOUT_EXPIRED}.
      */
     public WinRmClientBuilder retryReceiveAfterOperationTimeout(Predicate<String> retryReceiveAfterOperationTimeout) {
         this.retryReceiveAfterOperationTimeout = retryReceiveAfterOperationTimeout;
@@ -200,8 +205,8 @@ public class WinRmClientBuilder {
 
     /**
      * @param disableCertificateChecks Skip trusted certificate and domain (CN) checks.
-     *        Used when working with self-signed certificates. Use {@link #hostnameVerifier(HostnameVerifier)}
-     *        for a more precise white-listing of server certificates.
+     *                                 Used when working with self-signed certificates. Use {@link #hostnameVerifier(HostnameVerifier)}
+     *                                 for a more precise white-listing of server certificates.
      */
     public WinRmClientBuilder disableCertificateChecks(boolean disableCertificateChecks) {
         this.disableCertificateChecks = disableCertificateChecks;
@@ -226,9 +231,9 @@ public class WinRmClientBuilder {
 
     /**
      * @param hostnameVerifier override the default HostnameVerifier allowing
-     *        users to add custom validation logic. Used when the default rules for URL
-     *        hostname verification fail. Use {@link #disableCertificateChecks(boolean)} to
-     *        disable certificate checks for all host names.
+     *                         users to add custom validation logic. Used when the default rules for URL
+     *                         hostname verification fail. Use {@link #disableCertificateChecks(boolean)} to
+     *                         disable certificate checks for all host names.
      */
     public WinRmClientBuilder hostnameVerifier(HostnameVerifier hostnameVerifier) {
         this.hostnameVerifier = hostnameVerifier;
@@ -239,22 +244,22 @@ public class WinRmClientBuilder {
      * @param sslSocketFactory SSL Socket Factory to use
      */
     public WinRmClientBuilder sslSocketFactory(SSLSocketFactory sslSocketFactory) {
-    	this.sslSocketFactory = sslSocketFactory;
-    	return this;
+        this.sslSocketFactory = sslSocketFactory;
+        return this;
     }
-    
+
     /**
      * @param sslContext override the default SSLContext
      */
     public WinRmClientBuilder sslContext(SSLContext sslContext) {
-    	this.sslContext = sslContext;
-    	return this;
+        this.sslContext = sslContext;
+        return this;
     }
-    
+
     /**
      * @param context is a shared {@link WinRmClientContext} object which allows connection
-     *        reuse across {@link WinRmClient} invocations. If not set one will be created
-     *        for each {@link WinRmClient} instance.
+     *                reuse across {@link WinRmClient} invocations. If not set one will be created
+     *                for each {@link WinRmClient} instance.
      */
     public WinRmClientBuilder context(WinRmClientContext context) {
         this.context = context;
@@ -264,10 +269,30 @@ public class WinRmClientBuilder {
     /**
      * Set this parameter to {@code true} for requesting from the KDC a fresh Kerberos TGT with credentials set to the builder.
      * In this case the configuration defined in the JAAS configuration file will be ignored.
-     * By default this parameter is set to {@code false}. 
+     * By default this parameter is set to {@code false}.
      */
     public WinRmClientBuilder requestNewKerberosTicket(boolean requestNewKerberosTicket) {
         this.requestNewKerberosTicket = requestNewKerberosTicket;
+        return this;
+    }
+
+    public WinRmClientBuilder proxyServer(String proxyServer) {
+        this.proxyServer = proxyServer;
+        return this;
+    }
+
+    public WinRmClientBuilder proxyPort(Integer proxyPort) {
+        this.proxyPort = proxyPort;
+        return this;
+    }
+
+    public WinRmClientBuilder proxyUser(String proxyUser) {
+        this.proxyUser = proxyUser;
+        return this;
+    }
+
+    public WinRmClientBuilder proxyPassword(String proxyPassword) {
+        this.proxyPassword = proxyPassword;
         return this;
     }
 

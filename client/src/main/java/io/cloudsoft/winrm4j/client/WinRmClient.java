@@ -34,8 +34,10 @@ import javax.xml.xpath.XPath;
 import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 
+import org.apache.commons.codec.binary.StringUtils;
 import org.apache.cxf.Bus.BusState;
 import org.apache.cxf.configuration.jsse.TLSClientParameters;
+import org.apache.cxf.configuration.security.ProxyAuthorizationPolicy;
 import org.apache.cxf.endpoint.Client;
 import org.apache.cxf.frontend.ClientProxy;
 import org.apache.cxf.interceptor.security.NamePasswordCallbackHandler;
@@ -81,6 +83,9 @@ import io.cloudsoft.winrm4j.client.wsman.OptionType;
 public class WinRmClient implements AutoCloseable {
     static final int MAX_ENVELOPER_SIZE = 153600;
     static final String RESOURCE_URI = "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd";
+
+    static final String CP_IBM437 = "437";
+    static final String CP_GB2312 = "936";
 
     private final String workingDirectory;
     private final Locale locale;
@@ -133,9 +138,8 @@ public class WinRmClient implements AutoCloseable {
     /**
      * Create a WinRmClient builder
      *
-     * @param endpoint - the url of the WSMAN service in the format https://machine:5986/wsman
+     * @param endpoint             - the url of the WSMAN service in the format https://machine:5986/wsman
      * @param authenticationScheme - one of Basic, NTLM, Kerberos. Default is NTLM (with Negotiate).
-     * 
      * @deprecated since 0.6.0. Use {@link #builder(URL)} and {@link Builder#authenticationScheme(String)}.
      */
     @Deprecated
@@ -146,9 +150,8 @@ public class WinRmClient implements AutoCloseable {
     /**
      * Create a WinRmClient builder
      *
-     * @param endpoint - the url of the WSMAN service in the format https://machine:5986/wsman
+     * @param endpoint             - the url of the WSMAN service in the format https://machine:5986/wsman
      * @param authenticationScheme - one of Basic, NTLM, Kerberos. Default is NTLM (with Negotiate).
-     * 
      * @deprecated since 0.5.0. Use {@link #builder(String)} and {@link Builder#authenticationScheme(String)}.
      */
     @Deprecated
@@ -161,18 +164,24 @@ public class WinRmClient implements AutoCloseable {
      */
     @Deprecated
     public static class Builder extends WinRmClientBuilder {
-        /** @deprecated since 0.6.0; will change to private */
+        /**
+         * @deprecated since 0.6.0; will change to private
+         */
         @Deprecated
         public static final Long DEFAULT_OPERATION_TIMEOUT = 60l * 1000l;
 
-        /** @deprecated since 0.6.0. Use {@link WinRmClient#builder(URL, String)} instead. */
+        /**
+         * @deprecated since 0.6.0. Use {@link WinRmClient#builder(URL, String)} instead.
+         */
         @Deprecated
         public Builder(URL endpoint, String authenticationScheme) {
             this(endpoint);
             authenticationScheme(authenticationScheme);
         }
 
-        /** @deprecated since 0.6.0. Use {@link WinRmClient#builder(String, String)} instead. */
+        /**
+         * @deprecated since 0.6.0. Use {@link WinRmClient#builder(String, String)} instead.
+         */
         public Builder(String endpoint, String authenticationScheme) {
             this(WinRmClientBuilder.toUrlUnchecked(checkNotNull(endpoint, "endpoint")),
                     checkNotNull(authenticationScheme, "authenticationScheme"));
@@ -205,11 +214,11 @@ public class WinRmClient implements AutoCloseable {
         WinRm service = getService(builder);
         retryingHandler = new RetryingProxyHandler(service, builder.failureRetryPolicy);
         this.winrm = (WinRm) Proxy.newProxyInstance(WinRm.class.getClassLoader(),
-                new Class[] {WinRm.class, BindingProvider.class},
+                new Class[]{WinRm.class, BindingProvider.class},
                 retryingHandler);
     }
 
-    /** 
+    /**
      * @deprecated since 0.6.0. Re-build the client for a new operation timeout.
      * Note that the {@code receiveTimeout} is not changed.
      * {@code operationTimeout} is not a command time out but the polling
@@ -234,7 +243,9 @@ public class WinRmClient implements AutoCloseable {
         return initInstanceShell().execute(cmd, out, err);
     }
 
-    /** @deprecated since 0.6.0. Implementation detail, access will be removed in future versions. */
+    /**
+     * @deprecated since 0.6.0. Implementation detail, access will be removed in future versions.
+     */
     @Deprecated
     public int getNumberOfReceiveCalls() {
         if (shellCommand == null) {
@@ -265,15 +276,15 @@ public class WinRmClient implements AutoCloseable {
 
         Client client = ClientProxy.getClient(winrm);
         ServiceInfo si = client.getEndpoint().getEndpointInfo().getService();
-        
+
         // when client.command is executed if doclit.bare is not set then this exception occurs:
         // Unexpected element {http://schemas.microsoft.com/wbem/wsman/1/windows/shell}CommandResponse found.
         // Expected {http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd}CommandResponse
         si.setProperty("soap.force.doclit.bare", true);
 //        si.setProperty("soap.no.validate.parts", true);
 
-        BindingProvider bp = (BindingProvider)winrm;
-        
+        BindingProvider bp = (BindingProvider) winrm;
+
         @SuppressWarnings("rawtypes")
         List<Handler> handlerChain = Arrays.<Handler>asList(new StripShellResponseHandler());
         bp.getBinding().setHandlerChain(handlerChain);
@@ -289,7 +300,8 @@ public class WinRmClient implements AutoCloseable {
                 bp.getRequestContext().put(BindingProvider.USERNAME_PROPERTY, username);
                 bp.getRequestContext().put(BindingProvider.PASSWORD_PROPERTY, password);
                 break;
-            case AuthSchemes.NTLM: case AuthSchemes.KERBEROS:
+            case AuthSchemes.NTLM:
+            case AuthSchemes.KERBEROS:
                 /*
                  * If Kerberos authentication is requested two modes can be used:
                  * 1) with SSO : if a JAAS configuration file is defined the authentication is done with an external
@@ -338,11 +350,11 @@ public class WinRmClient implements AutoCloseable {
                     httpClient.setTlsClientParameters(tlsClientParameters);
                 }
                 if (hostnameVerifier != null || sslSocketFactory != null || sslContext != null) {
-                	TLSClientParameters tlsClientParameters = new TLSClientParameters();
-                	tlsClientParameters.setHostnameVerifier(hostnameVerifier);
-                	tlsClientParameters.setSSLSocketFactory(sslSocketFactory);
-                	tlsClientParameters.setSslContext(sslContext);
-                	httpClient.setTlsClientParameters(tlsClientParameters);
+                    TLSClientParameters tlsClientParameters = new TLSClientParameters();
+                    tlsClientParameters.setHostnameVerifier(hostnameVerifier);
+                    tlsClientParameters.setSSLSocketFactory(sslSocketFactory);
+                    tlsClientParameters.setSslContext(sslContext);
+                    httpClient.setTlsClientParameters(tlsClientParameters);
                 }
                 HTTPClientPolicy httpClientPolicy = new HTTPClientPolicy();
                 httpClientPolicy.setAllowChunking(false);
@@ -350,7 +362,22 @@ public class WinRmClient implements AutoCloseable {
                 httpClientPolicy.setConnectionRequestTimeout(connectionRequestTimeout);
                 httpClientPolicy.setReceiveTimeout(receiveTimeout);
 
+                if (builder.proxyServer != null) {
+                    httpClientPolicy.setProxyServer(builder.proxyServer);
+                }
+                if (builder.proxyPort != null) {
+                    httpClientPolicy.setProxyServerPort(builder.proxyPort);
+                }
+
                 httpClient.setClient(httpClientPolicy);
+
+                if (builder.proxyUser != null && builder.proxyPassword != null) {
+                    ProxyAuthorizationPolicy pa = new ProxyAuthorizationPolicy();
+                    pa.setUserName(builder.proxyUser);
+                    pa.setPassword(builder.proxyPassword);
+                    httpClient.setProxyAuthorization(pa);
+                }
+
                 httpClient.getClient().setAutoRedirect(true);
                 break;
             default:
@@ -361,8 +388,8 @@ public class WinRmClient implements AutoCloseable {
     /**
      * Get new Kerberos credentials (i.e a TGT) with the username and password provided.
      *
-     * @param username	name of the user to authenticate (format is UPN@DOMAIN)
-     * @param password	password of the user account
+     * @param username name of the user to authenticate (format is UPN@DOMAIN)
+     * @param password password of the user account
      * @return credentials wrapping the TGT which will be used for obtaining the SPNego token
      */
     private static KerberosCredentials getKerberosCreds(String username, String password) {
@@ -392,8 +419,8 @@ public class WinRmClient implements AutoCloseable {
      * Authenticate the user with the provided password. The login send a request AS-REQ to the Authentication Server.
      * The response will contain the TGT which will be store in the Subject.
      *
-     * @param username	name of the user to authenticate (format is UPN@DOMAIN)
-     * @param password	password of the user account
+     * @param username name of the user to authenticate (format is UPN@DOMAIN)
+     * @param password password of the user account
      * @return subject of the authenticated user
      */
     private static Subject kerberosLogin(String username, String password) {
@@ -427,8 +454,8 @@ public class WinRmClient implements AutoCloseable {
             options.put("client", "true");
             options.put("isInitiator", "true");
             options.put("useTicketCache", "false");
-            appConfigurationEntries = new AppConfigurationEntry[] { new AppConfigurationEntry(
-                    "com.sun.security.auth.module.Krb5LoginModule", LoginModuleControlFlag.REQUIRED, options) };
+            appConfigurationEntries = new AppConfigurationEntry[]{new AppConfigurationEntry(
+                    "com.sun.security.auth.module.Krb5LoginModule", LoginModuleControlFlag.REQUIRED, options)};
         }
 
         @Override
@@ -469,13 +496,22 @@ public class WinRmClient implements AutoCloseable {
         optSetCreate.getOption().add(optNoProfile);
         OptionType optCodepage = new OptionType();
         optCodepage.setName("WINRS_CODEPAGE");
-        optCodepage.setValue("437");
+        optCodepage.setValue(getCodePageByLocale());
         optSetCreate.getOption().add(optCodepage);
 
         ResourceCreated resourceCreated = winrm.create(shell, RESOURCE_URI, MAX_ENVELOPER_SIZE, operationTimeout, locale, optSetCreate);
         String shellId = getShellId(resourceCreated);
 
         return new ShellCommand(winrm, shellId, operationTimeout, retryReceiveAfterOperationTimeout, locale);
+    }
+
+    private String getCodePageByLocale() {
+        switch (locale.getLang()) {
+            case "zh": //chinese
+                return CP_GB2312;
+            default:
+                return CP_IBM437;
+        }
     }
 
     private static String getShellId(ResourceCreated resourceCreated) {
